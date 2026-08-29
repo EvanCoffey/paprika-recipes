@@ -308,7 +308,7 @@ class Repository:
     # -- The base (pristine) copies -----------------------------------------
 
     def base_path_for(self, uid: str) -> Path:
-        return self.base_dir / f"{uid}.json"
+        return self.base_dir / uid_filename(uid)
 
     def read_base(self, uid: str) -> RemoteRecipe | None:
         path = self.base_path_for(uid)
@@ -420,7 +420,7 @@ class Repository:
         self._photo_state_path(uid).unlink(missing_ok=True)
 
     def _photo_state_path(self, uid: str) -> Path:
-        return self.photo_state_dir / f"{uid}.json"
+        return self.photo_state_dir / uid_filename(uid)
 
     def _photo_replaced(self, uid: str, recipe: RemoteRecipe) -> bool:
         """Has the user swapped out the image behind an unchanged embed?
@@ -758,6 +758,29 @@ def unique_path(root: Path, recipe: BaseRecipe, taken: Container[Path]) -> Path:
     suffix = recipe.uid.split("-")[0] or uuid.uuid4().hex[:8]
 
     return root / f"{stem} ({suffix}){RECIPE_SUFFIX}"
+
+
+def uid_filename(uid: str) -> str:
+    """The `<uid>.json` filename a recipe's bookkeeping lives under.
+
+    The uid is the server's, and it names a file, so it is checked rather than
+    trusted -- exactly as `Repository.attachment_path` checks a photo name.  A
+    uid carrying a path separator or a `..` would let a hostile or
+    misconfigured account steer a base copy (or its deletion) clean out of the
+    `.paprika` directory.  Real uids are UUIDs, so nothing legitimate is
+    turned away.
+    """
+    if (
+        not uid
+        or "/" in uid
+        or "\\" in uid
+        or "\x00" in uid
+        or uid in (".", "..")
+        or uid != Path(uid).name
+    ):
+        raise PaprikaUserError(f"{uid!r} is not a usable recipe id.")
+
+    return f"{uid}.json"
 
 
 def safe_filename(name: str) -> str:

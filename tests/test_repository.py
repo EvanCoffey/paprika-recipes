@@ -11,6 +11,7 @@ from paprika_recipes.repository import (
     RepositoryConfig,
     Status,
     safe_filename,
+    uid_filename,
 )
 
 
@@ -365,6 +366,49 @@ class TestWriteSafety:
         (repository.repository_dir / "notes.md").write_text("hello", encoding="utf-8")
 
         assert repository.status() == []
+
+
+class TestUidSafety:
+    """A recipe's uid names a file in `.paprika`, so it is checked, not trusted."""
+
+    def test_a_plain_uid_becomes_a_json_filename(self):
+        assert uid_filename("4C855813-25B8-41CD-96E7-5B38AA7AAAAF") == (
+            "4C855813-25B8-41CD-96E7-5B38AA7AAAAF.json"
+        )
+
+    @pytest.mark.parametrize(
+        "uid",
+        [
+            "",
+            ".",
+            "..",
+            "../../evil",
+            "../outside",
+            "nested/uid",
+            "back\\slash",
+            "with\x00null",
+        ],
+    )
+    def test_refuses_a_uid_that_is_not_a_single_path_segment(self, uid):
+        with pytest.raises(PaprikaUserError, match="not a usable recipe id"):
+            uid_filename(uid)
+
+    def test_a_traversing_uid_never_escapes_the_base_directory(self, repository):
+        with pytest.raises(PaprikaUserError, match="not a usable recipe id"):
+            repository.write_base(make_recipe(uid="../../../pwned"))
+
+        assert list(repository.root.parent.glob("*.json")) == []
+
+    def test_a_traversing_uid_cannot_delete_files_outside_the_repository(
+        self, repository
+    ):
+        victim = repository.root / "keep.json"
+        victim.write_text("{}", encoding="utf-8")
+
+        with pytest.raises(PaprikaUserError, match="not a usable recipe id"):
+            repository.delete_base("../../keep")
+
+        assert victim.is_file()
 
 
 class TestFileNaming:

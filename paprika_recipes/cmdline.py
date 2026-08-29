@@ -55,7 +55,9 @@ def run(argv: list[str] | None = None) -> ExitCode:
     if args.debugger:
         import debugpy
 
-        debugpy.listen(("0.0.0.0", 5678))
+        # Loopback only: this port is a remote-code-execution channel, and
+        # there is never a reason for it to be reachable from off the machine.
+        debugpy.listen(("127.0.0.1", 5678))
         debugpy.wait_for_client()
 
     # Everything we say about a failure goes to stderr, so that a command's
