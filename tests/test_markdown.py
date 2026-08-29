@@ -302,7 +302,7 @@ class TestHeadingCollisions:
 
 
 class TestNormalization:
-    """Trailing newlines are the one thing markdown cannot hold onto."""
+    """Blank lines at the edge of a field are the thing markdown cannot hold."""
 
     def test_strips_trailing_newlines_from_prose_fields(self):
         recipe = BaseRecipe(
@@ -320,6 +320,29 @@ class TestNormalization:
         assert result.directions == "Bake."
         assert result.notes == "Best warm."
         assert result.nutritional_info == "Calories: 458kcal"
+
+    def test_strips_leading_newlines_from_prose_fields(self):
+        recipe = BaseRecipe(
+            description="\nA bread.",
+            ingredients="\n1 tsp salt",
+            directions="\n\nBake.",
+            notes="\nBest warm.",
+            nutritional_info="\nCalories: 458kcal",
+        )
+
+        result = normalize_recipe(recipe)
+
+        assert result.description == "A bread."
+        assert result.ingredients == "1 tsp salt"
+        assert result.directions == "Bake."
+        assert result.notes == "Best warm."
+        assert result.nutritional_info == "Calories: 458kcal"
+
+    def test_makes_a_recipe_with_a_leading_newline_lossless(self):
+        recipe = BaseRecipe(name="Chicken Thigh", description="\nBrined overnight.")
+
+        assert find_lossy_fields(recipe) == ["description"]
+        assert find_lossy_fields(normalize_recipe(recipe)) == []
 
     def test_strips_surrounding_whitespace_from_the_name(self):
         assert normalize_recipe(BaseRecipe(name="  Khachapuri  ")).name == "Khachapuri"

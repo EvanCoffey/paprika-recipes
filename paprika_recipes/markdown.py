@@ -390,11 +390,12 @@ def documents_differ(content: str, rendered: str) -> bool:
 def normalize_recipe(recipe: T) -> T:
     """Return a copy of `recipe` in the form our markdown can represent exactly.
 
-    Markdown has nowhere to put trailing blank lines at the end of a section --
-    the whitespace before the next heading is ours, not the recipe's -- so a
-    field ending in a newline would come back a byte shorter than it went out.
-    Rather than treat that as a failure, we flatten it on the way in, so that
-    the base copy and the working file always agree about what the recipe says.
+    Markdown has nowhere to put blank lines at the edges of a section -- the
+    whitespace between a heading and the text under it is ours, not the
+    recipe's -- so a field that begins or ends with a newline would come back
+    a few bytes shorter than it went out.  Rather than treat that as a
+    failure, we flatten it on the way in, so that the base copy and the
+    working file always agree about what the recipe says.
 
     The photo gets one extra courtesy: Paprika spells "no photo" as `null`,
     and our markdown can only spell it as an absent embed, which reads back
@@ -416,7 +417,7 @@ def normalize_recipe(recipe: T) -> T:
         if not isinstance(value, str):
             continue
 
-        normalized = value.strip() if field_name == TITLE_FIELD else value.rstrip("\n")
+        normalized = value.strip() if field_name == TITLE_FIELD else value.strip("\n")
 
         if normalized != value:
             changes[field_name] = normalized
