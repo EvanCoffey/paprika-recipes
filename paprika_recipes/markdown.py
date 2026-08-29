@@ -397,10 +397,11 @@ def normalize_recipe(recipe: T) -> T:
     failure, we flatten it on the way in, so that the base copy and the
     working file always agree about what the recipe says.
 
-    The photo gets one extra courtesy: Paprika spells "no photo" as `null`,
-    and our markdown can only spell it as an absent embed, which reads back
-    as `""`.  The two mean the same thing, so `null` is flattened on the way
-    in rather than reported as a loss.
+    Paprika also spells an empty field as `null` about as readily as `""` --
+    the photo, the description, a section that has never been filled in -- and
+    our markdown has a single spelling for "nothing here": an absent line.  A
+    `null` body field would therefore read back as `""` and look like a loss,
+    so it too is flattened on the way in rather than reported.
 
     That is all the normalisation we perform. It discards nothing a cook would
     notice, and it only ever reaches the server for a field the user edited
@@ -408,11 +409,12 @@ def normalize_recipe(recipe: T) -> T:
     """
     changes: dict[str, Any] = {}
 
-    if getattr(recipe, PHOTO_FIELD, None) is None:
-        changes[PHOTO_FIELD] = ""
-
     for field_name in BODY_FIELDS:
         value = getattr(recipe, field_name, None)
+
+        if value is None:
+            changes[field_name] = ""
+            continue
 
         if not isinstance(value, str):
             continue

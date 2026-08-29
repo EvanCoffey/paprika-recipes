@@ -359,6 +359,21 @@ class TestNormalization:
         assert find_lossy_fields(recipe) == ["description"]
         assert find_lossy_fields(normalize_recipe(recipe)) == []
 
+    @pytest.mark.parametrize(
+        "field_name",
+        ["description", "directions", "ingredients", "notes", "nutritional_info"],
+    )
+    def test_flattens_a_null_prose_field_to_empty(self, field_name):
+        """Paprika spells an empty prose field as `null` as often as `""`."""
+        recipe = BaseRecipe.from_dict({"name": "Chicken Thigh", field_name: None})
+
+        assert find_lossy_fields(recipe) == [field_name]
+
+        result = normalize_recipe(recipe)
+
+        assert getattr(result, field_name) == ""
+        assert find_lossy_fields(result) == []
+
     def test_strips_surrounding_whitespace_from_the_name(self):
         assert normalize_recipe(BaseRecipe(name="  Khachapuri  ")).name == "Khachapuri"
 
