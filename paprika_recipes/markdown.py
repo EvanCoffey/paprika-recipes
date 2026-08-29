@@ -500,13 +500,18 @@ def _escape_prose(value: str) -> str:
     for the same reason: an unescaped embed at the top of the document must
     always mean the recipe's photo, never a coincidence of its description.
 
+    A line that *already* begins with a backslash in front of such markup --
+    prose that genuinely reads ``\\## Note`` or ``\\![x](attachments/y)`` --
+    is escaped too, gaining a second backslash.  Without it `_unescape_prose`
+    would strip the recipe's own backslash and hand back `## Note`, a byte
+    short; with it, exactly one layer comes back off.
+
     Backslash-escaping the first character is standard CommonMark and renders
     as the literal text, so the file still reads correctly to a human and to
     any previewer.
     """
     return "\n".join(
-        f"\\{line}" if _is_heading(line) or PHOTO_EMBED.match(line) else line
-        for line in value.split("\n")
+        f"\\{line}" if _needs_escape(line) else line for line in value.split("\n")
     )
 
 
@@ -516,11 +521,24 @@ def _unescape_prose(value: str) -> str:
     )
 
 
-def _is_escaped(line: str) -> bool:
-    if not line.startswith("\\"):
-        return False
+def _looks_like_markup(line: str) -> bool:
+    """A line whose opening belongs to the format rather than to the prose."""
+    return _is_heading(line) or PHOTO_EMBED.match(line) is not None
 
-    return _is_heading(line[1:]) or PHOTO_EMBED.match(line[1:]) is not None
+
+def _needs_escape(line: str) -> bool:
+    """Would this prose line be misread -- as markup, or as an escape of it?
+
+    True for a `## ` heading or a photo embed, and also for any line that is
+    one of those behind a run of backslashes, since `_unescape_prose` peels a
+    backslash off every such line and would otherwise eat one the recipe owns.
+    """
+    return _looks_like_markup(line.lstrip("\\"))
+
+
+def _is_escaped(line: str) -> bool:
+    """Did `_escape_prose` put the leading backslash on this line?"""
+    return line.startswith("\\") and _needs_escape(line[1:])
 
 
 def _split_frontmatter(content: str) -> tuple[dict[str, Any], str]:

@@ -300,6 +300,21 @@ class TestHeadingCollisions:
         assert "\\## Step One" in render_recipe(recipe)
         assert roundtrip(recipe).directions == "## Step One\n\nDo it."
 
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            "\\## Not a heading",
+            "\\![alt](attachments/photo.jpg)",
+            "\\\\## Two backslashes",
+        ],
+    )
+    def test_prose_that_already_looks_escaped_survives(self, prose):
+        """A backslash the recipe owns is not the one `_unescape_prose` peels."""
+        recipe = BaseRecipe(name="Test", description=prose)
+
+        assert find_lossy_fields(recipe) == []
+        assert roundtrip(recipe).description == prose
+
 
 class TestNormalization:
     """Blank lines at the edge of a field are the thing markdown cannot hold."""
