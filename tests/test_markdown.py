@@ -336,6 +336,24 @@ class TestNormalization:
         assert result.notes == "Best warm."
         assert result.nutritional_info == "Calories: 458kcal"
 
+    def test_converts_windows_and_old_mac_line_endings_to_newlines(self):
+        """A file read back in text mode can only ever hold `\\n`."""
+        recipe = BaseRecipe(
+            name="Test",
+            description="A bread.\r\nFrom Mama.",
+            ingredients="1 tsp salt\r\n1 cup water\r\n",
+            directions="Combine.\r\n\r\nBake.",
+            notes="Best warm.\rOr cold.",
+        )
+
+        result = normalize_recipe(recipe)
+
+        assert result.description == "A bread.\nFrom Mama."
+        assert result.ingredients == "1 tsp salt\n1 cup water"
+        assert result.directions == "Combine.\n\nBake."
+        assert result.notes == "Best warm.\nOr cold."
+        assert find_lossy_fields(result) == []
+
     def test_strips_leading_newlines_from_prose_fields(self):
         recipe = BaseRecipe(
             description="\nA bread.",

@@ -46,7 +46,13 @@ from typing import Protocol
 
 from .exceptions import PaprikaError, PaprikaUserError
 from .images import prepare_photo
-from .markdown import ATTACHMENTS_DIRNAME, PHOTO_FIELD, PHOTO_FIELDS, foreign_uid_key
+from .markdown import (
+    ATTACHMENTS_DIRNAME,
+    PHOTO_FIELD,
+    PHOTO_FIELDS,
+    foreign_uid_key,
+    normalize_recipe,
+)
 from .merge import Merge, has_conflict_markers, merge_recipes
 from .remote import RemotePhoto, RemoteRecipe
 from .repository import (
@@ -325,6 +331,10 @@ class Syncer:
         assert entry.recipe is not None
         assert entry.path is not None
 
+        # The base and the file are already normalised; the server's copy has
+        # to be too, or a difference markdown cannot hold (`\r\n` line endings)
+        # would make every line of a field look changed on the server's side.
+        remote = normalize_recipe(remote)
         merge = merge_recipes(entry.base, entry.recipe, remote)
 
         if merge.merged and entry.photo_replaced and remote.photo != entry.base.photo:

@@ -202,6 +202,30 @@ class TestStore:
 
         assert entry.status is Status.UNCHANGED
 
+    def test_windows_line_endings_do_not_leave_the_recipe_dirty(self, repository):
+        """Paprika hands back `\\r\\n` for recipes typed in on some platforms."""
+        repository.store(
+            make_recipe(ingredients="Lean beef\r\nKetchup", directions="Mix.\r\nFry.")
+        )
+
+        (entry,) = repository.status()
+
+        assert entry.status is Status.UNCHANGED
+
+    def test_a_base_copy_saved_with_windows_line_endings_reads_as_unchanged(
+        self, repository
+    ):
+        """Base copies written before line endings were normalised still work."""
+        recipe = make_recipe(
+            uid="CRLF", ingredients="Lean beef\r\nKetchup", directions="Mix.\r\nFry."
+        )
+        repository.store(recipe)
+        repository.write_base(recipe)  # the un-normalised copy an old pull wrote
+
+        (entry,) = repository.status()
+
+        assert entry.status is Status.UNCHANGED
+
     def test_the_base_copy_renders_to_exactly_the_working_file(self, repository):
         """The invariant the whole change-detection scheme rests on."""
         recipe = make_recipe(notes="Best warm.\n")

@@ -317,7 +317,10 @@ class Repository:
             return None
 
         with open(path, encoding="utf-8") as inf:
-            return RemoteRecipe.from_dict(json.load(inf))
+            # Normalised on the way out as well as in, so that a base copy
+            # written before some normalisation existed (`\r\n` line endings,
+            # say) still renders to the file `store` wrote beside it.
+            return normalize_recipe(RemoteRecipe.from_dict(json.load(inf)))
 
     def write_base(self, recipe: RemoteRecipe) -> None:
         self.base_dir.mkdir(parents=True, exist_ok=True)

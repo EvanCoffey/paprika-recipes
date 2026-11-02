@@ -403,6 +403,12 @@ def normalize_recipe(recipe: T) -> T:
     `null` body field would therefore read back as `""` and look like a loss,
     so it too is flattened on the way in rather than reported.
 
+    Line endings are the third.  Paprika hands back whatever the device that
+    typed a recipe used, which can be `\\r\\n` (or a lone `\\r`), but a file read
+    back in text mode only ever holds `\\n`.  Left alone, a base copy with
+    `\\r\\n` in it could never render to the file beside it, and the recipe
+    would read as modified forever; so every line break becomes `\\n`.
+
     That is all the normalisation we perform. It discards nothing a cook would
     notice, and it only ever reaches the server for a field the user edited
     anyway.
@@ -419,7 +425,10 @@ def normalize_recipe(recipe: T) -> T:
         if not isinstance(value, str):
             continue
 
-        normalized = value.strip() if field_name == TITLE_FIELD else value.strip("\n")
+        normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+        normalized = (
+            normalized.strip() if field_name == TITLE_FIELD else normalized.strip("\n")
+        )
 
         if normalized != value:
             changes[field_name] = normalized
