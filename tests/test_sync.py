@@ -297,6 +297,25 @@ class TestPullingChanges:
         assert entry.recipe.ingredients == "2 tsp salt"
         assert entry.recipe.notes == "Now with notes."
 
+    def test_merges_a_recipe_the_server_stores_with_windows_line_endings(
+        self, repository
+    ):
+        """`\\r\\n` on the server must not make every line look changed."""
+        account = FakeAccount(
+            make_recipe("A", ingredients="1 tsp salt\r\n1 cup water\r\n1 egg")
+        )
+        Syncer(repository, account).pull()
+        assert repository.status()[0].status is Status.UNCHANGED
+
+        edit_file(repository, "A", "1 tsp salt", "2 tsp salt")
+        account.edit("A", ingredients="1 tsp salt\r\n1 cup water\r\n2 eggs")
+
+        report = Syncer(repository, account).pull()
+
+        assert actions(report)["Recipe A"] is Action.MERGED
+        (entry,) = repository.status()
+        assert entry.recipe.ingredients == "2 tsp salt\n1 cup water\n2 eggs"
+
     def test_a_merge_is_left_as_a_local_change_to_push(self, repository, account):
         Syncer(repository, account).pull()
         edit_file(repository, "A", "1 tsp salt", "2 tsp salt")

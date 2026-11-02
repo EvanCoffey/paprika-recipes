@@ -300,9 +300,24 @@ class TestHeadingCollisions:
         assert "\\## Step One" in render_recipe(recipe)
         assert roundtrip(recipe).directions == "## Step One\n\nDo it."
 
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            "\\## Not a heading",
+            "\\![alt](attachments/photo.jpg)",
+            "\\\\## Two backslashes",
+        ],
+    )
+    def test_prose_that_already_looks_escaped_survives(self, prose):
+        """A backslash the recipe owns is not the one `_unescape_prose` peels."""
+        recipe = BaseRecipe(name="Test", description=prose)
+
+        assert find_lossy_fields(recipe) == []
+        assert roundtrip(recipe).description == prose
+
 
 class TestNormalization:
-    """Trailing newlines are the one thing markdown cannot hold onto."""
+    """Blank lines at the edge of a field are the thing markdown cannot hold."""
 
     def test_strips_trailing_newlines_from_prose_fields(self):
         recipe = BaseRecipe(
@@ -320,6 +335,62 @@ class TestNormalization:
         assert result.directions == "Bake."
         assert result.notes == "Best warm."
         assert result.nutritional_info == "Calories: 458kcal"
+
+    def test_converts_windows_and_old_mac_line_endings_to_newlines(self):
+        """A file read back in text mode can only ever hold `\\n`."""
+        recipe = BaseRecipe(
+            name="Test",
+            description="A bread.\r\nFrom Mama.",
+            ingredients="1 tsp salt\r\n1 cup water\r\n",
+            directions="Combine.\r\n\r\nBake.",
+            notes="Best warm.\rOr cold.",
+        )
+
+        result = normalize_recipe(recipe)
+
+        assert result.description == "A bread.\nFrom Mama."
+        assert result.ingredients == "1 tsp salt\n1 cup water"
+        assert result.directions == "Combine.\n\nBake."
+        assert result.notes == "Best warm.\nOr cold."
+        assert find_lossy_fields(result) == []
+
+    def test_strips_leading_newlines_from_prose_fields(self):
+        recipe = BaseRecipe(
+            description="\nA bread.",
+            ingredients="\n1 tsp salt",
+            directions="\n\nBake.",
+            notes="\nBest warm.",
+            nutritional_info="\nCalories: 458kcal",
+        )
+
+        result = normalize_recipe(recipe)
+
+        assert result.description == "A bread."
+        assert result.ingredients == "1 tsp salt"
+        assert result.directions == "Bake."
+        assert result.notes == "Best warm."
+        assert result.nutritional_info == "Calories: 458kcal"
+
+    def test_makes_a_recipe_with_a_leading_newline_lossless(self):
+        recipe = BaseRecipe(name="Chicken Thigh", description="\nBrined overnight.")
+
+        assert find_lossy_fields(recipe) == ["description"]
+        assert find_lossy_fields(normalize_recipe(recipe)) == []
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["description", "directions", "ingredients", "notes", "nutritional_info"],
+    )
+    def test_flattens_a_null_prose_field_to_empty(self, field_name):
+        """Paprika spells an empty prose field as `null` as often as `""`."""
+        recipe = BaseRecipe.from_dict({"name": "Chicken Thigh", field_name: None})
+
+        assert find_lossy_fields(recipe) == [field_name]
+
+        result = normalize_recipe(recipe)
+
+        assert getattr(result, field_name) == ""
+        assert find_lossy_fields(result) == []
 
     def test_strips_surrounding_whitespace_from_the_name(self):
         assert normalize_recipe(BaseRecipe(name="  Khachapuri  ")).name == "Khachapuri"

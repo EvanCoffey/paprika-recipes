@@ -390,16 +390,24 @@ def documents_differ(content: str, rendered: str) -> bool:
 def normalize_recipe(recipe: T) -> T:
     """Return a copy of `recipe` in the form our markdown can represent exactly.
 
-    Markdown has nowhere to put trailing blank lines at the end of a section --
-    the whitespace before the next heading is ours, not the recipe's -- so a
-    field ending in a newline would come back a byte shorter than it went out.
-    Rather than treat that as a failure, we flatten it on the way in, so that
-    the base copy and the working file always agree about what the recipe says.
+    Markdown has nowhere to put blank lines at the edges of a section -- the
+    whitespace between a heading and the text under it is ours, not the
+    recipe's -- so a field that begins or ends with a newline would come back
+    a few bytes shorter than it went out.  Rather than treat that as a
+    failure, we flatten it on the way in, so that the base copy and the
+    working file always agree about what the recipe says.
 
-    The photo gets one extra courtesy: Paprika spells "no photo" as `null`,
-    and our markdown can only spell it as an absent embed, which reads back
-    as `""`.  The two mean the same thing, so `null` is flattened on the way
-    in rather than reported as a loss.
+    Paprika also spells an empty field as `null` about as readily as `""` --
+    the photo, the description, a section that has never been filled in -- and
+    our markdown has a single spelling for "nothing here": an absent line.  A
+    `null` body field would therefore read back as `""` and look like a loss,
+    so it too is flattened on the way in rather than reported.
+
+    Line endings are the third.  Paprika hands back whatever the device that
+    typed a recipe used, which can be `\\r\\n` (or a lone `\\r`), but a file read
+    back in text mode only ever holds `\\n`.  Left alone, a base copy with
+    `\\r\\n` in it could never render to the file beside it, and the recipe
+    would read as modified forever; so every line break becomes `\\n`.
 
     That is all the normalisation we perform. It discards nothing a cook would
     notice, and it only ever reaches the server for a field the user edited
@@ -407,16 +415,20 @@ def normalize_recipe(recipe: T) -> T:
     """
     changes: dict[str, Any] = {}
 
-    if getattr(recipe, PHOTO_FIELD, None) is None:
-        changes[PHOTO_FIELD] = ""
-
     for field_name in BODY_FIELDS:
         value = getattr(recipe, field_name, None)
+
+        if value is None:
+            changes[field_name] = ""
+            continue
 
         if not isinstance(value, str):
             continue
 
-        normalized = value.strip() if field_name == TITLE_FIELD else value.rstrip("\n")
+        normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+        normalized = (
+            normalized.strip() if field_name == TITLE_FIELD else normalized.strip("\n")
+        )
 
         if normalized != value:
             changes[field_name] = normalized
@@ -499,13 +511,18 @@ def _escape_prose(value: str) -> str:
     for the same reason: an unescaped embed at the top of the document must
     always mean the recipe's photo, never a coincidence of its description.
 
+    A line that *already* begins with a backslash in front of such markup --
+    prose that genuinely reads ``\\## Note`` or ``\\![x](attachments/y)`` --
+    is escaped too, gaining a second backslash.  Without it `_unescape_prose`
+    would strip the recipe's own backslash and hand back `## Note`, a byte
+    short; with it, exactly one layer comes back off.
+
     Backslash-escaping the first character is standard CommonMark and renders
     as the literal text, so the file still reads correctly to a human and to
     any previewer.
     """
     return "\n".join(
-        f"\\{line}" if _is_heading(line) or PHOTO_EMBED.match(line) else line
-        for line in value.split("\n")
+        f"\\{line}" if _needs_escape(line) else line for line in value.split("\n")
     )
 
 
@@ -515,11 +532,24 @@ def _unescape_prose(value: str) -> str:
     )
 
 
-def _is_escaped(line: str) -> bool:
-    if not line.startswith("\\"):
-        return False
+def _looks_like_markup(line: str) -> bool:
+    """A line whose opening belongs to the format rather than to the prose."""
+    return _is_heading(line) or PHOTO_EMBED.match(line) is not None
 
-    return _is_heading(line[1:]) or PHOTO_EMBED.match(line[1:]) is not None
+
+def _needs_escape(line: str) -> bool:
+    """Would this prose line be misread -- as markup, or as an escape of it?
+
+    True for a `## ` heading or a photo embed, and also for any line that is
+    one of those behind a run of backslashes, since `_unescape_prose` peels a
+    backslash off every such line and would otherwise eat one the recipe owns.
+    """
+    return _looks_like_markup(line.lstrip("\\"))
+
+
+def _is_escaped(line: str) -> bool:
+    """Did `_escape_prose` put the leading backslash on this line?"""
+    return line.startswith("\\") and _needs_escape(line[1:])
 
 
 def _split_frontmatter(content: str) -> tuple[dict[str, Any], str]:

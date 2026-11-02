@@ -11,6 +11,7 @@ from paprika_recipes.repository import (
     RepositoryConfig,
     Status,
     safe_filename,
+    uid_filename,
 )
 
 
@@ -201,6 +202,30 @@ class TestStore:
 
         assert entry.status is Status.UNCHANGED
 
+    def test_windows_line_endings_do_not_leave_the_recipe_dirty(self, repository):
+        """Paprika hands back `\\r\\n` for recipes typed in on some platforms."""
+        repository.store(
+            make_recipe(ingredients="Lean beef\r\nKetchup", directions="Mix.\r\nFry.")
+        )
+
+        (entry,) = repository.status()
+
+        assert entry.status is Status.UNCHANGED
+
+    def test_a_base_copy_saved_with_windows_line_endings_reads_as_unchanged(
+        self, repository
+    ):
+        """Base copies written before line endings were normalised still work."""
+        recipe = make_recipe(
+            uid="CRLF", ingredients="Lean beef\r\nKetchup", directions="Mix.\r\nFry."
+        )
+        repository.store(recipe)
+        repository.write_base(recipe)  # the un-normalised copy an old pull wrote
+
+        (entry,) = repository.status()
+
+        assert entry.status is Status.UNCHANGED
+
     def test_the_base_copy_renders_to_exactly_the_working_file(self, repository):
         """The invariant the whole change-detection scheme rests on."""
         recipe = make_recipe(notes="Best warm.\n")
@@ -365,6 +390,49 @@ class TestWriteSafety:
         (repository.repository_dir / "notes.md").write_text("hello", encoding="utf-8")
 
         assert repository.status() == []
+
+
+class TestUidSafety:
+    """A recipe's uid names a file in `.paprika`, so it is checked, not trusted."""
+
+    def test_a_plain_uid_becomes_a_json_filename(self):
+        assert uid_filename("4C855813-25B8-41CD-96E7-5B38AA7AAAAF") == (
+            "4C855813-25B8-41CD-96E7-5B38AA7AAAAF.json"
+        )
+
+    @pytest.mark.parametrize(
+        "uid",
+        [
+            "",
+            ".",
+            "..",
+            "../../evil",
+            "../outside",
+            "nested/uid",
+            "back\\slash",
+            "with\x00null",
+        ],
+    )
+    def test_refuses_a_uid_that_is_not_a_single_path_segment(self, uid):
+        with pytest.raises(PaprikaUserError, match="not a usable recipe id"):
+            uid_filename(uid)
+
+    def test_a_traversing_uid_never_escapes_the_base_directory(self, repository):
+        with pytest.raises(PaprikaUserError, match="not a usable recipe id"):
+            repository.write_base(make_recipe(uid="../../../pwned"))
+
+        assert list(repository.root.parent.glob("*.json")) == []
+
+    def test_a_traversing_uid_cannot_delete_files_outside_the_repository(
+        self, repository
+    ):
+        victim = repository.root / "keep.json"
+        victim.write_text("{}", encoding="utf-8")
+
+        with pytest.raises(PaprikaUserError, match="not a usable recipe id"):
+            repository.delete_base("../../keep")
+
+        assert victim.is_file()
 
 
 class TestFileNaming:
